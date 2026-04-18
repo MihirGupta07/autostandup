@@ -25,6 +25,27 @@ load_dotenv()
 
 models.Base.metadata.create_all(bind=engine)
 
+
+def _run_migrations():
+    """Add columns introduced after initial schema. Idempotent."""
+    from sqlalchemy import text
+    statements = [
+        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS gitlab_token VARCHAR",
+        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS gitlab_webhook_secret VARCHAR",
+        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS github_token VARCHAR",
+        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS github_webhook_secret VARCHAR",
+    ]
+    with engine.begin() as conn:
+        for stmt in statements:
+            try:
+                conn.execute(text(stmt))
+            except Exception as e:
+                print(f"Migration skipped ({stmt}): {e}")
+
+
+if engine.dialect.name == "postgresql":
+    _run_migrations()
+
 app = FastAPI(title="AutoStandup", redirect_slashes=False)
 templates = Jinja2Templates(directory="templates")
 
