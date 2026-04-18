@@ -1,14 +1,8 @@
-import os
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
-from dotenv import load_dotenv
-
-load_dotenv()
-
-_client = WebClient(token=os.getenv("SLACK_BOT_TOKEN"))
 
 
-def post_team_standup(channel_id: str, standups: list[dict]):
+def post_team_standup(token: str, channel_id: str, standups: list[dict]):
     """Post all team standups as a single Slack message with Block Kit formatting."""
     blocks = [
         {
@@ -33,7 +27,7 @@ def post_team_standup(channel_id: str, standups: list[dict]):
     fallback_text = "\n\n".join(item["standup"] for item in standups)
 
     try:
-        _client.chat_postMessage(
+        WebClient(token=token).chat_postMessage(
             channel=channel_id,
             blocks=blocks,
             text=fallback_text,

@@ -51,7 +51,7 @@ async def run_standups(db=None):
                 ))
 
             db.commit()
-            post_team_standup(workspace.slack_channel_id, standups)
+            post_team_standup(workspace.slack_bot_token, workspace.slack_channel_id, standups)
             print(f"[{datetime.now()}] Standup posted for workspace {workspace.id}")
 
     finally:
