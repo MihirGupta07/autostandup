@@ -63,8 +63,9 @@
     </label>
     <label>
       Standup Schedule
-      <small style="color:#888; margin-left:0.4rem">cron — default is 9 am Mon–Fri</small>
-      <input name="standup_cron" value="0 9 * * 1-5">
+      <small style="color:#888; margin-left:0.4rem">Enter cron or keep the default schedule.</small>
+      <input name="standup_cron" value="{{ workspace.standup_cron or '0 9 * * 1-5' }}">
+      <div style="color:#555; font-size:0.9rem; margin-top:0.5rem;">Current schedule: <strong>{{ standup_schedule_human }}</strong></div>
     </label>
     <button type="submit">Save & Continue →</button>
   </form>
@@ -128,7 +129,7 @@
     </div>
     <div>
       <div style="color:#888; font-size:0.75rem; font-weight:600; text-transform:uppercase; margin-bottom:0.4rem;">Schedule</div>
-      <span class="badge">{{ workspace.standup_cron }}</span>
+      <span class="badge">{{ standup_schedule_human }}</span>
     </div>
   </div>
   <div style="margin-top:1rem;">

@@ -60,6 +60,42 @@ def _gh_post(token: str, path: str, data: dict):
     )
     return resp.json()
 
+def describe_cron(cron: str) -> str:
+    parts = cron.strip().split()
+    if len(parts) != 5:
+        return cron
+
+    minute, hour, day, month, dow = parts
+
+    def format_time(hour_str: str, minute_str: str) -> str:
+        try:
+            h = int(hour_str)
+            m = int(minute_str)
+        except ValueError:
+            return f"{hour_str}:{minute_str.zfill(2)}"
+        am_pm = "AM" if h < 12 else "PM"
+        h12 = h if 1 <= h <= 12 else (h - 12 if h > 12 else 12)
+        return f"{h12}:{m:02d} {am_pm}"
+
+    time_text = format_time(hour, minute)
+    if day == "*" and month == "*" and dow == "1-5":
+        return f"Every weekday at {time_text}"
+    if day == "*" and month == "*" and dow == "*":
+        return f"Every day at {time_text}"
+    if day == "*" and month == "*" and dow.isdigit():
+        days = {
+            "0": "Sunday",
+            "1": "Monday",
+            "2": "Tuesday",
+            "3": "Wednesday",
+            "4": "Thursday",
+            "5": "Friday",
+            "6": "Saturday",
+        }
+        return f"Every {days.get(dow, dow)} at {time_text}"
+    if day != "*" and month == "*" and dow == "*":
+        return f"On day {day} of every month at {time_text}"
+    return f"Cron schedule: {cron}"
 
 # ── Web UI ────────────────────────────────────────────────────────────────────
 
@@ -153,6 +189,7 @@ def setup_page(request: Request, db: Session = Depends(get_db)):
         "channels": channels,
         "slack_users": slack_users,
         "available_repos": available_repos,
+        "standup_schedule_human": describe_cron(workspace.standup_cron) if workspace else "Every weekday at 9:00 AM",
     })
 
 
