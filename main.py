@@ -207,14 +207,14 @@ def slack_oauth_start():
 
 @app.get("/oauth/slack/callback")
 def slack_oauth_callback(code: str, db: Session = Depends(get_db)):
-    client = SlackClient()
-    resp = client.oauth_v2_access(
-        client_id=SLACK_CLIENT_ID,
-        client_secret=SLACK_CLIENT_SECRET,
-        code=code,
-        redirect_uri=f"{APP_BASE_URL}/oauth/slack/callback",
+    r = httpx.post(
+        "https://slack.com/api/oauth.v2.access",
+        auth=(SLACK_CLIENT_ID, SLACK_CLIENT_SECRET),
+        data={"code": code, "redirect_uri": f"{APP_BASE_URL}/oauth/slack/callback"},
     )
-    if not resp["ok"]:
+    resp = r.json()
+    if not resp.get("ok"):
+        print(f"Slack OAuth failed: {resp}")
         raise HTTPException(400, detail=resp.get("error", "OAuth failed"))
 
     db.query(models.GitHubRepo).delete()
