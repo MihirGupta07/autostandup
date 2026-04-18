@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — AutoStandup{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h2>Standups</h2>
+  <form method="post" action="/run-standup">
+    <button type="submit" class="run-btn">▶ Run Now</button>
+  </form>
+</div>
+
+{% if not entries_by_date %}
+<div class="empty-state">
+  <h3>No standups yet</h3>
+  <p>Click <strong>Run Now</strong> above, or <a href="/setup">set up your workspace</a> first.</p>
+</div>
+{% endif %}
+
+{% for date_str, group in entries_by_date %}
+<div class="date-group">
+  <div class="date-label">{{ date_str }}</div>
+  <div class="standup-grid">
+    {% for entry in group %}
+    <div class="card">
+      <div class="card-name">{{ entry.member_name }}</div>
+      <pre class="card-content">{{ entry.content }}</pre>
+      {% if entry.flags %}
+      <div class="card-flags">
+        {% for flag in entry.flags %}
+        <div class="flag">{{ flag }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endfor %}
+
+{% endblock %}

@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(claude-api)",
+      "Skill(claude-api:*)",
+      "Bash(pip install *)",
+      "Bash(python seed.py)",
+      "Bash(python -m uvicorn main:app --reload --port 8000)",
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(curl -s -X POST http://localhost:8000/admin/trigger-standup)",
+      "Bash(pkill -f uvicorn)",
+      "Bash(python -m uvicorn main:app --port 8000)",
+      "Bash(python -c \"from dotenv import load_dotenv; load_dotenv\\(\\); import os; print\\(repr\\(os.getenv\\('GITHUB_WEBHOOK_SECRET'\\)\\)\\)\")",
+      "Bash(taskkill /F /IM python.exe /T)",
+      "Bash(taskkill /F /IM uvicorn.exe /T)",
+      "Bash(taskkill //F //IM python.exe //T)",
+      "Bash(taskkill //F //IM uvicorn.exe //T)",
+      "Bash(netstat -ano)",
+      "Bash(curl -s http://127.0.0.1:8000/health)",
+      "Bash(cmd /c \"for %p in \\(43000 61404 57544 70044 83408\\) do taskkill /F /PID %p\")",
+      "Bash(cmd /c \"netstat -ano | findstr :8000 | findstr LISTENING\")",
+      "WebSearch"
+    ]
+  }
+}

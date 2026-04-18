@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+python-dotenv
+groq
+jinja2
+httpx
+slack-sdk
+apscheduler
+python-multipart
+psycopg2-binary

@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block title %}Setup — AutoStandup{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h2>Setup</h2>
+</div>
+
+<!-- Progress indicator -->
+<div style="display:flex; gap:0; margin-bottom:2rem; font-size:0.8rem; font-weight:600;">
+  {% set step = 1 %}
+  {% if workspace %}{% set step = 2 %}{% endif %}
+  {% if workspace and workspace.slack_channel_id %}{% set step = 3 %}{% endif %}
+  {% if workspace and workspace.slack_channel_id and workspace.github_token %}{% set step = 4 %}{% endif %}
+  {% if workspace and workspace.slack_channel_id and workspace.github_token and connected_repos %}{% set step = 5 %}{% endif %}
+
+  {% for label in ["Slack", "Channel", "GitHub", "Repos", "Members"] %}
+  {% set i = loop.index %}
+  <div style="flex:1; text-align:center; padding:0.5rem;
+              background:{% if i <= step %}#1a1a2e{% else %}#f0f0f0{% endif %};
+              color:{% if i <= step %}#fff{% else %}#999{% endif %};
+              border-radius:{% if loop.first %}6px 0 0 6px{% elif loop.last %}0 6px 6px 0{% else %}0{% endif %};">
+    {{ i }}. {{ label }}
+  </div>
+  {% endfor %}
+</div>
+
+{% if not workspace %}
+<!-- ── Step 1: Connect Slack ── -->
+<section class="setup-section" style="text-align:center; padding:3rem 2rem">
+  <h3 style="margin-bottom:0.5rem">Connect your Slack workspace</h3>
+  <p style="color:#888; margin-bottom:2rem; font-size:0.95rem">
+    AutoStandup needs permission to post standups and read your team.
+  </p>
+  <a href="/oauth/slack">
+    <img alt="Add to Slack" height="40"
+         src="https://platform.slack-edge.com/img/add_to_slack.png"
+         srcset="https://platform.slack-edge.com/img/add_to_slack.png 1x,
+                 https://platform.slack-edge.com/img/add_to_slack@2x.png 2x">
+  </a>
+</section>
+
+{% elif not workspace.slack_channel_id %}
+<!-- ── Step 2: Pick a channel ── -->
+<section class="setup-section">
+  <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem">
+    <span style="font-size:1.2rem">✅</span>
+    <h3 style="margin:0">Slack connected — pick a channel</h3>
+  </div>
+  <p style="color:#888; font-size:0.9rem; margin-bottom:1.5rem">
+    Choose where AutoStandup will post the daily standup. The bot joins automatically.
+  </p>
+  {% if channels %}
+  <form method="post" action="/setup/channel">
+    <label>
+      Channel
+      <select name="channel_id" required>
+        <option value="">Select a channel...</option>
+        {% for ch in channels %}
+        <option value="{{ ch.id }}">#{{ ch.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Standup Schedule
+      <small style="color:#888; margin-left:0.4rem">cron — default is 9 am Mon–Fri</small>
+      <input name="standup_cron" value="0 9 * * 1-5">
+    </label>
+    <button type="submit">Save & Continue →</button>
+  </form>
+  {% else %}
+  <p style="color:#e74c3c; font-size:0.9rem">Could not load channels. Check that the bot has <code>channels:read</code> permission.</p>
+  {% endif %}
+</section>
+
+{% elif not workspace.github_token %}
+<!-- ── Step 3: Connect GitHub ── -->
+<section class="setup-section" style="text-align:center; padding:3rem 2rem">
+  <h3 style="margin-bottom:0.5rem">Connect GitHub</h3>
+  <p style="color:#888; margin-bottom:2rem; font-size:0.95rem">
+    AutoStandup will automatically set up webhooks on the repos you choose — no manual configuration needed.
+  </p>
+  <a href="/oauth/github" style="display:inline-flex; align-items:center; gap:0.6rem; background:#24292e; color:#fff; padding:0.65rem 1.4rem; border-radius:6px; text-decoration:none; font-weight:600; font-size:0.95rem;">
+    <svg height="20" viewBox="0 0 16 16" fill="white" xmlns="http://www.w3.org/2000/svg">
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+    </svg>
+    Connect GitHub
+  </a>
+</section>
+
+{% elif not connected_repos %}
+<!-- ── Step 4: Pick repos ── -->
+<section class="setup-section">
+  <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem">
+    <span style="font-size:1.2rem">✅</span>
+    <h3 style="margin:0">GitHub connected — pick repos to track</h3>
+  </div>
+  <p style="color:#888; font-size:0.9rem; margin-bottom:1.5rem">
+    AutoStandup will create a webhook on each selected repo. Push events and pull requests will be tracked automatically.
+  </p>
+  {% if available_repos %}
+  <form method="post" action="/setup/repos">
+    <div style="max-height:340px; overflow-y:auto; border:1px solid #e9ecef; border-radius:8px; padding:0.5rem; margin-bottom:1rem;">
+      {% for repo in available_repos %}
+      <label style="display:flex; align-items:center; gap:0.75rem; padding:0.5rem 0.75rem; border-radius:6px; cursor:pointer; margin:0;"
+             onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background=''">
+        <input type="checkbox" name="repos" value="{{ repo.full_name }}" style="margin:0; flex-shrink:0">
+        <span style="font-weight:500; font-size:0.9rem;">{{ repo.full_name }}</span>
+        {% if repo.private %}<span style="font-size:0.7rem; background:#f0f0f0; padding:0.1rem 0.4rem; border-radius:3px; color:#666;">private</span>{% endif %}
+      </label>
+      {% endfor %}
+    </div>
+    <button type="submit">Set Up Webhooks →</button>
+  </form>
+  {% else %}
+  <p style="color:#888; font-size:0.9rem">No repos found. Make sure you granted <code>admin:repo_hook</code> access during GitHub OAuth.</p>
+  {% endif %}
+</section>
+
+{% else %}
+<!-- ── Step 5: Member management ── -->
+<section class="setup-section">
+  <h3 style="margin-top:0">✅ All connected</h3>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; font-size:0.9rem;">
+    <div>
+      <div style="color:#888; font-size:0.75rem; font-weight:600; text-transform:uppercase; margin-bottom:0.4rem;">Slack Channel</div>
+      <span class="badge">#{{ workspace.slack_channel_id }}</span>
+    </div>
+    <div>
+      <div style="color:#888; font-size:0.75rem; font-weight:600; text-transform:uppercase; margin-bottom:0.4rem;">Schedule</div>
+      <span class="badge">{{ workspace.standup_cron }}</span>
+    </div>
+  </div>
+  <div style="margin-top:1rem;">
+    <div style="color:#888; font-size:0.75rem; font-weight:600; text-transform:uppercase; margin-bottom:0.4rem;">Tracked Repos</div>
+    <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+      {% for repo in connected_repos %}
+      <div style="display:flex; align-items:center; gap:0.3rem;">
+        <span class="badge">{{ repo.full_name }}</span>
+        <form method="post" action="/setup/repos/{{ repo.id }}/delete" style="margin:0">
+          <button type="submit" class="remove-btn" style="font-size:0.7rem; padding:0.1rem 0.4rem">✕</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="setup-section">
+  <h3>Team Members</h3>
+  {% if members %}
+  <table class="member-table" style="margin-bottom:1.5rem">
+    <thead>
+      <tr><th>Name</th><th>GitHub / GitLab</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for m in members %}
+      <tr>
+        <td>{{ m.display_name }}</td>
+        <td><span class="badge">{{ m.git_username }}</span></td>
+        <td>
+          <form method="post" action="/setup/members/{{ m.id }}/delete" style="margin:0">
+            <button type="submit" class="remove-btn">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if slack_users %}
+  <h4 style="margin-bottom:0.75rem">Add Member</h4>
+  <form method="post" action="/setup/members">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; align-items:end">
+      <label style="margin:0">
+        Team Member
+        <select name="slack_user_id" required>
+          <option value="">Select from Slack...</option>
+          {% for user in slack_users %}
+          <option value="{{ user.id }}">{{ user.real_name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label style="margin:0">
+        GitHub / GitLab Username
+        <input name="git_username" placeholder="e.g. MihirGupta07" required>
+      </label>
+    </div>
+    <button type="submit" style="margin-top:1rem">Add to Standup</button>
+  </form>
+  {% elif not members %}
+  <p style="color:#888; font-size:0.9rem">No more Slack users to add.</p>
+  {% else %}
+  <p style="color:#27ae60; font-size:0.9rem">✅ All workspace members have been added.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+{% endblock %}

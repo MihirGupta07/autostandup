@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}AutoStandup{% endblock %}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <style>
+    body { background: #f8f9fa; }
+    nav.topnav {
+      background: #fff;
+      border-bottom: 1px solid #e9ecef;
+      padding: 0.75rem 0;
+      margin-bottom: 2rem;
+    }
+    nav.topnav .inner {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    nav.topnav .brand { font-weight: 700; font-size: 1.1rem; text-decoration: none; color: inherit; }
+    nav.topnav a { text-decoration: none; color: #555; margin-left: 1.5rem; font-size: 0.95rem; }
+    nav.topnav a:hover { color: #000; }
+    .container { max-width: 960px; margin: 0 auto; padding: 0 1.5rem 3rem; }
+    .date-group { margin-bottom: 2.5rem; }
+    .date-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #888;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid #e9ecef;
+    }
+    .standup-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+    .card {
+      background: #fff;
+      border: 1px solid #e9ecef;
+      border-radius: 10px;
+      padding: 1.25rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .card-name { font-weight: 700; margin-bottom: 0.75rem; font-size: 1rem; }
+    .card-content {
+      white-space: pre-wrap;
+      font-size: 0.85rem;
+      line-height: 1.6;
+      color: #333;
+      font-family: inherit;
+      margin: 0;
+    }
+    .card-flags { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #f0f0f0; }
+    .flag { font-size: 0.8rem; color: #e67e22; margin: 0.2rem 0; }
+    .empty-state { text-align: center; padding: 4rem 2rem; color: #888; }
+    .empty-state h3 { color: #555; }
+    .page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 2rem;
+    }
+    .page-header h2 { margin: 0; }
+    button.run-btn { margin: 0; }
+    section.setup-section {
+      background: #fff;
+      border: 1px solid #e9ecef;
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    section.setup-section h3 { margin-top: 0; }
+    .member-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    .member-table th { text-align: left; padding: 0.5rem 0.75rem; color: #666; font-weight: 600; border-bottom: 1px solid #e9ecef; }
+    .member-table td { padding: 0.6rem 0.75rem; border-bottom: 1px solid #f5f5f5; }
+    .badge { background: #f0f0f0; padding: 0.1rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-family: monospace; }
+    .configured-note { color: #27ae60; font-size: 0.9rem; }
+    .remove-btn {
+      background: none;
+      border: 1px solid #ddd;
+      color: #888;
+      padding: 0.2rem 0.6rem;
+      font-size: 0.75rem;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .remove-btn:hover { border-color: #e74c3c; color: #e74c3c; }
+  </style>
+</head>
+<body>
+  <nav class="topnav">
+    <div class="inner">
+      <a class="brand" href="/">⚡ AutoStandup</a>
+      <div>
+        <a href="/">Dashboard</a>
+        <a href="/setup">Setup</a>
+      </div>
+    </div>
+  </nav>
+  <div class="container">
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>
