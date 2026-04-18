@@ -11,10 +11,10 @@
   {% set step = 1 %}
   {% if workspace %}{% set step = 2 %}{% endif %}
   {% if workspace and workspace.slack_channel_id %}{% set step = 3 %}{% endif %}
-  {% if workspace and workspace.slack_channel_id and workspace.github_token %}{% set step = 4 %}{% endif %}
-  {% if workspace and workspace.slack_channel_id and workspace.github_token and connected_repos %}{% set step = 5 %}{% endif %}
+  {% if workspace and workspace.slack_channel_id and (workspace.github_token or workspace.gitlab_token) %}{% set step = 4 %}{% endif %}
+  {% if workspace and workspace.slack_channel_id and (workspace.github_token or workspace.gitlab_token) and (connected_repos or connected_projects) %}{% set step = 5 %}{% endif %}
 
-  {% for label in ["Slack", "Channel", "GitHub", "Repos", "Members"] %}
+  {% for label in ["Slack", "Channel", "Git", "Sources", "Members"] %}
   {% set i = loop.index %}
   <div style="flex:1; text-align:center; padding:0.5rem;
               background:{% if i <= step %}#1a1a2e{% else %}#f0f0f0{% endif %};
@@ -74,23 +74,32 @@
   {% endif %}
 </section>
 
-{% elif not workspace.github_token %}
-<!-- ── Step 3: Connect GitHub ── -->
+{% elif not workspace.github_token and not workspace.gitlab_token %}
+<!-- ── Step 3: Connect Git provider (GitHub or GitLab) ── -->
 <section class="setup-section" style="text-align:center; padding:3rem 2rem">
-  <h3 style="margin-bottom:0.5rem">Connect GitHub</h3>
+  <h3 style="margin-bottom:0.5rem">Connect your code host</h3>
   <p style="color:#888; margin-bottom:2rem; font-size:0.95rem">
-    AutoStandup will automatically set up webhooks on the repos you choose — no manual configuration needed.
+    AutoStandup will automatically set up webhooks on the repos/projects you choose. You can connect both providers if you use both.
   </p>
-  <a href="/oauth/github" style="display:inline-flex; align-items:center; gap:0.6rem; background:#24292e; color:#fff; padding:0.65rem 1.4rem; border-radius:6px; text-decoration:none; font-weight:600; font-size:0.95rem;">
-    <svg height="20" viewBox="0 0 16 16" fill="white" xmlns="http://www.w3.org/2000/svg">
-      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
-    </svg>
-    Connect GitHub
-  </a>
+  <div style="display:flex; gap:1rem; justify-content:center; flex-wrap:wrap">
+    <a href="/oauth/github" style="display:inline-flex; align-items:center; gap:0.6rem; background:#24292e; color:#fff; padding:0.65rem 1.4rem; border-radius:6px; text-decoration:none; font-weight:600; font-size:0.95rem;">
+      <svg height="20" viewBox="0 0 16 16" fill="white" xmlns="http://www.w3.org/2000/svg">
+        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+      </svg>
+      Connect GitHub
+    </a>
+    <a href="/oauth/gitlab" style="display:inline-flex; align-items:center; gap:0.6rem; background:#fc6d26; color:#fff; padding:0.65rem 1.4rem; border-radius:6px; text-decoration:none; font-weight:600; font-size:0.95rem;">
+      <svg height="20" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+        <path d="M23.955 13.587l-1.342-4.135-2.664-8.189a.455.455 0 0 0-.867 0L16.418 9.45H7.582L4.919 1.263a.455.455 0 0 0-.867 0L1.386 9.452.044 13.587a.924.924 0 0 0 .331 1.023L12 23.054l11.625-8.443a.92.92 0 0 0 .33-1.024"/>
+      </svg>
+      Connect GitLab
+    </a>
+  </div>
 </section>
 
-{% elif not connected_repos %}
-<!-- ── Step 4: Pick repos ── -->
+{% elif not connected_repos and not connected_projects %}
+<!-- ── Step 4: Pick sources (GitHub repos / GitLab projects) ── -->
+{% if workspace.github_token %}
 <section class="setup-section">
   <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem">
     <span style="font-size:1.2rem">✅</span>
@@ -111,18 +120,66 @@
       </label>
       {% endfor %}
     </div>
-    <button type="submit">Set Up Webhooks →</button>
+    <button type="submit">Set Up GitHub Webhooks →</button>
   </form>
   {% else %}
   <p style="color:#888; font-size:0.9rem">No repos found. Make sure you granted <code>admin:repo_hook</code> access during GitHub OAuth.</p>
   {% endif %}
 </section>
+{% endif %}
+
+{% if workspace.gitlab_token %}
+<section class="setup-section">
+  <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem">
+    <span style="font-size:1.2rem">✅</span>
+    <h3 style="margin:0">GitLab connected — pick projects to track</h3>
+  </div>
+  <p style="color:#888; font-size:0.9rem; margin-bottom:1.5rem">
+    AutoStandup will create a webhook on each selected project. Push events and merge requests will be tracked automatically.
+  </p>
+  {% if available_projects %}
+  <form method="post" action="/setup/projects">
+    <div style="max-height:340px; overflow-y:auto; border:1px solid #e9ecef; border-radius:8px; padding:0.5rem; margin-bottom:1rem;">
+      {% for project in available_projects %}
+      <label style="display:flex; align-items:center; gap:0.75rem; padding:0.5rem 0.75rem; border-radius:6px; cursor:pointer; margin:0;"
+             onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background=''">
+        <input type="checkbox" name="projects" value="{{ project.id }}" style="margin:0; flex-shrink:0">
+        <span style="font-weight:500; font-size:0.9rem;">{{ project.path_with_namespace }}</span>
+        {% if project.visibility == 'private' %}<span style="font-size:0.7rem; background:#f0f0f0; padding:0.1rem 0.4rem; border-radius:3px; color:#666;">private</span>{% endif %}
+      </label>
+      {% endfor %}
+    </div>
+    <button type="submit">Set Up GitLab Webhooks →</button>
+  </form>
+  {% else %}
+  <p style="color:#888; font-size:0.9rem">No projects found. Make sure you granted <code>api</code> scope during GitLab OAuth.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="setup-section" style="text-align:center">
+  <p style="color:#888; font-size:0.85rem; margin-bottom:0.5rem">Also want to connect the other provider?</p>
+  <div style="display:flex; gap:0.75rem; justify-content:center; flex-wrap:wrap">
+    {% if not workspace.github_token %}
+    <a href="/oauth/github" style="background:#24292e; color:#fff; padding:0.4rem 0.9rem; border-radius:5px; text-decoration:none; font-size:0.85rem;">+ Connect GitHub</a>
+    {% endif %}
+    {% if not workspace.gitlab_token %}
+    <a href="/oauth/gitlab" style="background:#fc6d26; color:#fff; padding:0.4rem 0.9rem; border-radius:5px; text-decoration:none; font-size:0.85rem;">+ Connect GitLab</a>
+    {% endif %}
+  </div>
+</section>
 
 {% else %}
 <!-- ── Step 5: Member management ── -->
 <section class="setup-section">
-  <h3 style="margin-top:0">✅ All connected</h3>
-  <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; font-size:0.9rem;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0">
+    <h3 style="margin:0">✅ All connected</h3>
+    <button type="button" onclick="document.getElementById('settings-form').style.display = document.getElementById('settings-form').style.display === 'block' ? 'none' : 'block'"
+            style="background:#f0f0f0; border:1px solid #ddd; padding:0.3rem 0.7rem; border-radius:4px; font-size:0.75rem; cursor:pointer">
+      ✎ Edit
+    </button>
+  </div>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; font-size:0.9rem; margin-top:1rem">
     <div>
       <div style="color:#888; font-size:0.75rem; font-weight:600; text-transform:uppercase; margin-bottom:0.4rem;">Slack Channel</div>
       <span class="badge">#{{ workspace.slack_channel_id }}</span>
@@ -132,8 +189,25 @@
       <span class="badge">{{ standup_schedule_human }}</span>
     </div>
   </div>
+  <form id="settings-form" method="post" action="/setup/settings" style="display:none; margin-top:1rem; padding:1rem; background:#f8f9fa; border-radius:6px">
+    <label style="margin:0">
+      Channel
+      <select name="channel_id" required>
+        {% for ch in channels %}
+        <option value="{{ ch.id }}" {% if ch.id == workspace.slack_channel_id %}selected{% endif %}>#{{ ch.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label style="margin-top:0.6rem">
+      Standup Schedule
+      <small style="color:#888; margin-left:0.4rem">cron format</small>
+      <input name="standup_cron" value="{{ workspace.standup_cron }}" required>
+    </label>
+    <button type="submit" style="margin-top:0.8rem">Save Changes</button>
+  </form>
+  {% if connected_repos %}
   <div style="margin-top:1rem;">
-    <div style="color:#888; font-size:0.75rem; font-weight:600; text-transform:uppercase; margin-bottom:0.4rem;">Tracked Repos</div>
+    <div style="color:#888; font-size:0.75rem; font-weight:600; text-transform:uppercase; margin-bottom:0.4rem;">GitHub Repos</div>
     <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
       {% for repo in connected_repos %}
       <div style="display:flex; align-items:center; gap:0.3rem;">
@@ -145,6 +219,32 @@
       {% endfor %}
     </div>
   </div>
+  {% endif %}
+  {% if connected_projects %}
+  <div style="margin-top:1rem;">
+    <div style="color:#888; font-size:0.75rem; font-weight:600; text-transform:uppercase; margin-bottom:0.4rem;">GitLab Projects</div>
+    <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+      {% for project in connected_projects %}
+      <div style="display:flex; align-items:center; gap:0.3rem;">
+        <span class="badge">{{ project.path_with_namespace }}</span>
+        <form method="post" action="/setup/projects/{{ project.id }}/delete" style="margin:0">
+          <button type="submit" class="remove-btn" style="font-size:0.7rem; padding:0.1rem 0.4rem">✕</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+  {% if not workspace.github_token or not workspace.gitlab_token %}
+  <div style="margin-top:1rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
+    {% if not workspace.github_token %}
+    <a href="/oauth/github" style="background:#24292e; color:#fff; padding:0.3rem 0.7rem; border-radius:4px; text-decoration:none; font-size:0.75rem;">+ Connect GitHub</a>
+    {% endif %}
+    {% if not workspace.gitlab_token %}
+    <a href="/oauth/gitlab" style="background:#fc6d26; color:#fff; padding:0.3rem 0.7rem; border-radius:4px; text-decoration:none; font-size:0.75rem;">+ Connect GitLab</a>
+    {% endif %}
+  </div>
+  {% endif %}
 </section>
 
 <section class="setup-section">

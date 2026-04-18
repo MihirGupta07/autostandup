@@ -17,7 +17,9 @@ from sqlalchemy.orm import Session
 import models
 from database import engine, get_db
 from normalizer import normalize_github, normalize_gitlab
-from scheduler import run_standups, start_scheduler
+from scheduler import run_standups, start_scheduler, reschedule
+from slack_bot import post_team_standup
+from datetime import datetime, timedelta, timezone
 
 load_dotenv()
 
@@ -26,11 +28,12 @@ models.Base.metadata.create_all(bind=engine)
 app = FastAPI(title="AutoStandup", redirect_slashes=False)
 templates = Jinja2Templates(directory="templates")
 
-GITLAB_WEBHOOK_SECRET = os.getenv("GITLAB_WEBHOOK_SECRET", "")
 SLACK_CLIENT_ID = os.getenv("SLACK_CLIENT_ID", "")
 SLACK_CLIENT_SECRET = os.getenv("SLACK_CLIENT_SECRET", "")
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID", "")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET", "")
+GITLAB_CLIENT_ID = os.getenv("GITLAB_CLIENT_ID", "")
+GITLAB_CLIENT_SECRET = os.getenv("GITLAB_CLIENT_SECRET", "")
 APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8000")
 
 
@@ -59,6 +62,123 @@ def _gh_post(token: str, path: str, data: dict):
         json=data,
     )
     return resp.json()
+
+
+# ── GitLab API helpers ────────────────────────────────────────────────────────
+
+def _gl_get(token: str, path: str, **params):
+    resp = httpx.get(
+        f"https://gitlab.com/api/v4{path}",
+        headers={"Authorization": f"Bearer {token}"},
+        params=params,
+    )
+    return resp.json() if resp.status_code == 200 else []
+
+
+def _gl_post(token: str, path: str, data: dict):
+    resp = httpx.post(
+        f"https://gitlab.com/api/v4{path}",
+        headers={"Authorization": f"Bearer {token}"},
+        json=data,
+    )
+    return resp.json()
+
+
+# ── Backfill ──────────────────────────────────────────────────────────────────
+
+def backfill_member(db: Session, workspace, member, days: int = 7):
+    """Pull recent commits and PRs/MRs for a member so the first standup isn't empty."""
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    since_iso = since.isoformat()
+    new_events = 0
+
+    # GitHub
+    if workspace.github_token:
+        for repo in db.query(models.GitHubRepo).filter_by(workspace_id=workspace.id).all():
+            owner, name = repo.full_name.split("/", 1)
+            commits = _gh_get(
+                workspace.github_token,
+                f"/repos/{owner}/{name}/commits",
+                author=member.git_username, since=since_iso, per_page=50,
+            )
+            for c in commits if isinstance(commits, list) else []:
+                db.add(models.ActivityEvent(
+                    workspace_id=workspace.id, member_id=member.id,
+                    source="github", event_type="commit",
+                    title=(c.get("commit") or {}).get("message", "").split("\n", 1)[0][:200],
+                    url=c.get("html_url"), branch=None, repo=repo.full_name,
+                    occurred_at=_parse_iso((c.get("commit") or {}).get("author", {}).get("date")),
+                ))
+                new_events += 1
+
+            prs = _gh_get(
+                workspace.github_token,
+                f"/repos/{owner}/{name}/pulls",
+                state="all", sort="updated", direction="desc", per_page=30,
+            )
+            for pr in prs if isinstance(prs, list) else []:
+                if (pr.get("user") or {}).get("login") != member.git_username:
+                    continue
+                updated = _parse_iso(pr.get("updated_at"))
+                if updated and updated < since:
+                    continue
+                etype = "pr_merged" if pr.get("merged_at") else "pr_opened"
+                db.add(models.ActivityEvent(
+                    workspace_id=workspace.id, member_id=member.id,
+                    source="github", event_type=etype,
+                    title=pr.get("title", "")[:200], url=pr.get("html_url"),
+                    branch=(pr.get("head") or {}).get("ref"), repo=repo.full_name,
+                    occurred_at=updated or datetime.now(timezone.utc),
+                ))
+                new_events += 1
+
+    # GitLab
+    if workspace.gitlab_token:
+        for project in db.query(models.GitLabProject).filter_by(workspace_id=workspace.id).all():
+            commits = _gl_get(
+                workspace.gitlab_token,
+                f"/projects/{project.project_id}/repository/commits",
+                since=since_iso, author=member.git_username, per_page=50,
+            )
+            for c in commits if isinstance(commits, list) else []:
+                db.add(models.ActivityEvent(
+                    workspace_id=workspace.id, member_id=member.id,
+                    source="gitlab", event_type="commit",
+                    title=(c.get("title") or c.get("message") or "")[:200],
+                    url=c.get("web_url"), branch=None, repo=project.path_with_namespace,
+                    occurred_at=_parse_iso(c.get("committed_date") or c.get("created_at")),
+                ))
+                new_events += 1
+
+            mrs = _gl_get(
+                workspace.gitlab_token,
+                f"/projects/{project.project_id}/merge_requests",
+                author_username=member.git_username, updated_after=since_iso,
+                state="all", per_page=30,
+            )
+            for mr in mrs if isinstance(mrs, list) else []:
+                etype = "pr_merged" if mr.get("state") == "merged" else "pr_opened"
+                db.add(models.ActivityEvent(
+                    workspace_id=workspace.id, member_id=member.id,
+                    source="gitlab", event_type=etype,
+                    title=mr.get("title", "")[:200], url=mr.get("web_url"),
+                    branch=mr.get("source_branch"), repo=project.path_with_namespace,
+                    occurred_at=_parse_iso(mr.get("updated_at")),
+                ))
+                new_events += 1
+
+    db.commit()
+    print(f"Backfilled {new_events} events for {member.display_name or member.git_username}")
+    return new_events
+
+
+def _parse_iso(s):
+    if not s:
+        return datetime.now(timezone.utc)
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return datetime.now(timezone.utc)
 
 def describe_cron(cron: str) -> str:
     parts = cron.strip().split()
@@ -119,8 +239,47 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
 
 
 @app.post("/run-standup")
-async def web_run_standup(db: Session = Depends(get_db)):
-    await run_standups(db)
+async def web_run_standup(
+    hours: int = Form(24),
+    custom_hours: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    # "custom" selection overrides the preset
+    if custom_hours.strip():
+        try:
+            hours = max(1, min(int(custom_hours), 720))  # clamp 1h..30d
+        except ValueError:
+            pass
+    await run_standups(db, hours=hours)
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/repost-standup")
+def web_repost_standup(date: str = Form(...), db: Session = Depends(get_db)):
+    """Re-post all standup entries from a given date (format: "Month DD, YYYY") to Slack."""
+    workspace = db.query(models.Workspace).first()
+    if not workspace or not workspace.slack_channel_id:
+        return RedirectResponse("/", status_code=303)
+
+    try:
+        target = datetime.strptime(date, "%B %d, %Y").date()
+    except ValueError:
+        return RedirectResponse("/", status_code=303)
+
+    entries = (
+        db.query(models.StandupEntry)
+        .filter(models.StandupEntry.workspace_id == workspace.id)
+        .all()
+    )
+    matching = [e for e in entries if e.ran_at.date() == target]
+    if not matching:
+        return RedirectResponse("/", status_code=303)
+
+    standups = [
+        {"member": e.member_name, "standup": f"*{e.member_name}*\n{e.content}", "flags": e.flags or []}
+        for e in matching
+    ]
+    post_team_standup(workspace.slack_bot_token, workspace.slack_channel_id, standups)
     return RedirectResponse("/", status_code=303)
 
 
@@ -129,41 +288,62 @@ def setup_page(request: Request, db: Session = Depends(get_db)):
     workspace = db.query(models.Workspace).first()
     members = db.query(models.Member).all() if workspace else []
     connected_repos = db.query(models.GitHubRepo).filter_by(workspace_id=workspace.id).all() if workspace else []
+    connected_projects = db.query(models.GitLabProject).filter_by(workspace_id=workspace.id).all() if workspace else []
 
     channels = []
     slack_users = []
     available_repos = []
+    available_projects = []
+
+    provider_connected = bool(workspace and (workspace.github_token or workspace.gitlab_token))
+    has_any_source = bool(connected_repos or connected_projects)
 
     if workspace:
         client = SlackClient(token=workspace.slack_bot_token)
 
+        try:
+            resp = client.conversations_list(types="public_channel", limit=200)
+            channels = sorted(
+                [c for c in resp["channels"] if not c.get("is_archived")],
+                key=lambda c: c["name"],
+            )
+        except Exception as e:
+            print(f"Slack channels error: {e}")
+
         if not workspace.slack_channel_id:
-            try:
-                resp = client.conversations_list(types="public_channel", limit=200)
-                channels = sorted(
-                    [c for c in resp["channels"] if not c.get("is_archived")],
-                    key=lambda c: c["name"],
-                )
-            except Exception as e:
-                print(f"Slack channels error: {e}")
+            pass  # will show channel picker
 
-        elif not workspace.github_token:
-            pass  # show GitHub connect button
+        elif not provider_connected:
+            pass  # show GitHub/GitLab connect buttons
 
-        elif not connected_repos:
-            try:
-                connected_names = {r.full_name for r in connected_repos}
-                all_repos = _gh_get(
-                    workspace.github_token, "/user/repos",
-                    per_page=100, sort="updated",
-                    affiliation="owner,organization_member",
-                )
-                available_repos = sorted(
-                    [r for r in all_repos if r.get("full_name") not in connected_names],
-                    key=lambda r: r["full_name"],
-                )
-            except Exception as e:
-                print(f"GitHub repos error: {e}")
+        elif not has_any_source:
+            if workspace.github_token:
+                try:
+                    connected_names = {r.full_name for r in connected_repos}
+                    all_repos = _gh_get(
+                        workspace.github_token, "/user/repos",
+                        per_page=100, sort="updated",
+                        affiliation="owner,organization_member",
+                    )
+                    available_repos = sorted(
+                        [r for r in all_repos if r.get("full_name") not in connected_names],
+                        key=lambda r: r["full_name"],
+                    )
+                except Exception as e:
+                    print(f"GitHub repos error: {e}")
+            if workspace.gitlab_token:
+                try:
+                    connected_ids = {p.project_id for p in connected_projects}
+                    all_projects = _gl_get(
+                        workspace.gitlab_token, "/projects",
+                        membership=True, per_page=100, order_by="last_activity_at",
+                    )
+                    available_projects = sorted(
+                        [p for p in all_projects if p.get("id") not in connected_ids],
+                        key=lambda p: p["path_with_namespace"],
+                    )
+                except Exception as e:
+                    print(f"GitLab projects error: {e}")
 
         else:
             try:
@@ -186,9 +366,11 @@ def setup_page(request: Request, db: Session = Depends(get_db)):
         "workspace": workspace,
         "members": members,
         "connected_repos": connected_repos,
+        "connected_projects": connected_projects,
         "channels": channels,
         "slack_users": slack_users,
         "available_repos": available_repos,
+        "available_projects": available_projects,
         "standup_schedule_human": describe_cron(workspace.standup_cron) if workspace else "Every weekday at 9:00 AM",
     })
 
@@ -218,6 +400,7 @@ def slack_oauth_callback(code: str, db: Session = Depends(get_db)):
         raise HTTPException(400, detail=resp.get("error", "OAuth failed"))
 
     db.query(models.GitHubRepo).delete()
+    db.query(models.GitLabProject).delete()
     db.query(models.Member).delete()
     db.query(models.Workspace).delete()
     db.commit()
@@ -268,6 +451,45 @@ def github_oauth_callback(code: str, db: Session = Depends(get_db)):
     return RedirectResponse("/setup", status_code=303)
 
 
+# ── GitLab OAuth ──────────────────────────────────────────────────────────────
+
+@app.get("/oauth/gitlab")
+def gitlab_oauth_start():
+    params = urllib.parse.urlencode({
+        "client_id": GITLAB_CLIENT_ID,
+        "redirect_uri": f"{APP_BASE_URL}/oauth/gitlab/callback",
+        "response_type": "code",
+        "scope": "api",
+    })
+    return RedirectResponse(f"https://gitlab.com/oauth/authorize?{params}")
+
+
+@app.get("/oauth/gitlab/callback")
+def gitlab_oauth_callback(code: str, db: Session = Depends(get_db)):
+    resp = httpx.post(
+        "https://gitlab.com/oauth/token",
+        data={
+            "client_id": GITLAB_CLIENT_ID,
+            "client_secret": GITLAB_CLIENT_SECRET,
+            "code": code,
+            "grant_type": "authorization_code",
+            "redirect_uri": f"{APP_BASE_URL}/oauth/gitlab/callback",
+        },
+    )
+    data = resp.json()
+    token = data.get("access_token")
+    if not token:
+        print(f"GitLab OAuth failed: {data}")
+        raise HTTPException(400, detail=data.get("error_description", "GitLab OAuth failed"))
+
+    workspace = db.query(models.Workspace).first()
+    if workspace:
+        workspace.gitlab_token = token
+        workspace.gitlab_webhook_secret = secrets.token_hex(20)
+        db.commit()
+    return RedirectResponse("/setup", status_code=303)
+
+
 # ── Setup actions ─────────────────────────────────────────────────────────────
 
 @app.post("/setup/channel")
@@ -285,6 +507,38 @@ def save_channel(
             SlackClient(token=workspace.slack_bot_token).conversations_join(channel=channel_id)
         except Exception:
             pass
+        try:
+            reschedule(standup_cron)
+        except Exception as e:
+            print(f"Reschedule failed: {e}")
+    return RedirectResponse("/setup", status_code=303)
+
+
+@app.post("/setup/settings")
+def save_settings(
+    channel_id: str = Form(...),
+    standup_cron: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Edit schedule and/or channel after initial setup."""
+    workspace = db.query(models.Workspace).first()
+    if not workspace:
+        return RedirectResponse("/setup", status_code=303)
+
+    channel_changed = channel_id != workspace.slack_channel_id
+    workspace.slack_channel_id = channel_id
+    workspace.standup_cron = standup_cron
+    db.commit()
+
+    if channel_changed:
+        try:
+            SlackClient(token=workspace.slack_bot_token).conversations_join(channel=channel_id)
+        except Exception:
+            pass
+    try:
+        reschedule(standup_cron)
+    except Exception as e:
+        print(f"Reschedule failed: {e}")
     return RedirectResponse("/setup", status_code=303)
 
 
@@ -342,6 +596,64 @@ def delete_repo(repo_id: str, db: Session = Depends(get_db)):
     return RedirectResponse("/setup", status_code=303)
 
 
+@app.post("/setup/projects")
+async def save_projects(request: Request, db: Session = Depends(get_db)):
+    form = await request.form()
+    selected = form.getlist("projects")  # values are GitLab numeric project IDs
+
+    workspace = db.query(models.Workspace).first()
+    if not workspace or not selected:
+        return RedirectResponse("/setup", status_code=303)
+
+    for pid_str in selected:
+        try:
+            pid = int(pid_str)
+        except ValueError:
+            continue
+        project = _gl_get(workspace.gitlab_token, f"/projects/{pid}")
+        if not project or not project.get("path_with_namespace"):
+            continue
+
+        result = _gl_post(
+            workspace.gitlab_token,
+            f"/projects/{pid}/hooks",
+            {
+                "url": f"{APP_BASE_URL}/webhooks/gitlab",
+                "token": workspace.gitlab_webhook_secret,
+                "push_events": True,
+                "merge_requests_events": True,
+                "enable_ssl_verification": True,
+            },
+        )
+        db.add(models.GitLabProject(
+            workspace_id=workspace.id,
+            project_id=pid,
+            path_with_namespace=project["path_with_namespace"],
+            hook_id=result.get("id"),
+        ))
+
+    db.commit()
+    return RedirectResponse("/setup", status_code=303)
+
+
+@app.post("/setup/projects/{project_row_id}/delete")
+def delete_project(project_row_id: str, db: Session = Depends(get_db)):
+    project = db.query(models.GitLabProject).filter_by(id=project_row_id).first()
+    if project:
+        workspace = db.query(models.Workspace).first()
+        if workspace and project.hook_id:
+            try:
+                httpx.delete(
+                    f"https://gitlab.com/api/v4/projects/{project.project_id}/hooks/{project.hook_id}",
+                    headers={"Authorization": f"Bearer {workspace.gitlab_token}"},
+                )
+            except Exception:
+                pass
+        db.delete(project)
+        db.commit()
+    return RedirectResponse("/setup", status_code=303)
+
+
 @app.post("/setup/members")
 def add_member_ui(
     slack_user_id: str = Form(...),
@@ -363,13 +675,21 @@ def add_member_ui(
     except Exception:
         pass
 
-    db.add(models.Member(
+    member = models.Member(
         workspace_id=workspace.id,
         git_username=git_username,
         slack_user_id=slack_user_id,
         display_name=display_name,
-    ))
+    )
+    db.add(member)
     db.commit()
+    db.refresh(member)
+
+    try:
+        backfill_member(db, workspace, member, days=7)
+    except Exception as e:
+        print(f"Backfill failed for {git_username}: {e}")
+
     return RedirectResponse("/setup", status_code=303)
 
 
@@ -443,7 +763,9 @@ async def github_webhook(request: Request, db: Session = Depends(get_db)):
 @app.post("/webhooks/gitlab")
 async def gitlab_webhook(request: Request, db: Session = Depends(get_db)):
     token = request.headers.get("X-Gitlab-Token", "")
-    if GITLAB_WEBHOOK_SECRET and token != GITLAB_WEBHOOK_SECRET:
+    workspace = db.query(models.Workspace).first()
+    secret = (workspace.gitlab_webhook_secret if workspace else "") or ""
+    if secret and token != secret:
         raise HTTPException(status_code=401, detail="Invalid token")
 
     data = await request.json()

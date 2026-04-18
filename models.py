@@ -18,6 +18,8 @@ class Workspace(Base):
     standup_cron = Column(String, default="0 9 * * 1-5")
     github_token = Column(String, nullable=True)
     github_webhook_secret = Column(String, nullable=True)
+    gitlab_token = Column(String, nullable=True)
+    gitlab_webhook_secret = Column(String, nullable=True)
 
     members = relationship("Member", back_populates="workspace")
 
@@ -71,3 +73,13 @@ class GitHubRepo(Base):
     workspace_id = Column(String, ForeignKey("workspaces.id"), nullable=False)
     full_name = Column(String, nullable=False)   # "owner/repo"
     hook_id = Column(Integer, nullable=True)      # GitHub webhook ID
+
+
+class GitLabProject(Base):
+    __tablename__ = "gitlab_projects"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    workspace_id = Column(String, ForeignKey("workspaces.id"), nullable=False)
+    project_id = Column(Integer, nullable=False)              # GitLab numeric project ID
+    path_with_namespace = Column(String, nullable=False)      # "group/project"
+    hook_id = Column(Integer, nullable=True)                   # GitLab webhook ID

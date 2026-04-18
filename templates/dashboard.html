@@ -4,7 +4,16 @@
 
 <div class="page-header">
   <h2>Standups</h2>
-  <form method="post" action="/run-standup">
+  <form method="post" action="/run-standup" style="display:flex; gap:0.5rem; align-items:center; margin:0">
+    <select name="hours" onchange="document.getElementById('custom_hours').style.display = this.value === 'custom' ? 'inline-block' : 'none'"
+            style="padding:0.4rem 0.6rem; border-radius:5px; border:1px solid #ddd; font-size:0.85rem">
+      <option value="24">Last 24h</option>
+      <option value="48">Last 48h</option>
+      <option value="168">Last 7d</option>
+      <option value="custom">Custom…</option>
+    </select>
+    <input type="number" id="custom_hours" name="custom_hours" placeholder="hours" min="1" max="720"
+           style="display:none; width:5rem; padding:0.4rem 0.6rem; border-radius:5px; border:1px solid #ddd; font-size:0.85rem">
     <button type="submit" class="run-btn">▶ Run Now</button>
   </form>
 </div>
@@ -18,7 +27,15 @@
 
 {% for date_str, group in entries_by_date %}
 <div class="date-group">
-  <div class="date-label">{{ date_str }}</div>
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem">
+    <div class="date-label" style="margin:0">{{ date_str }}</div>
+    <form method="post" action="/repost-standup" style="margin:0">
+      <input type="hidden" name="date" value="{{ date_str }}">
+      <button type="submit" style="background:#f0f0f0; border:1px solid #ddd; padding:0.25rem 0.6rem; border-radius:4px; font-size:0.75rem; cursor:pointer">
+        ↗ Repost to Slack
+      </button>
+    </form>
+  </div>
   <div class="standup-grid">
     {% for entry in group %}
     <div class="card">

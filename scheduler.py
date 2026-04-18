@@ -10,14 +10,14 @@ from slack_bot import post_team_standup
 _scheduler = AsyncIOScheduler()
 
 
-async def run_standups(db=None):
-    """Generate and post standups for all workspaces."""
+async def run_standups(db=None, hours: int = 24):
+    """Generate and post standups for all workspaces, covering the last `hours` of activity."""
     close_db = db is None
     if close_db:
         db = SessionLocal()
 
     try:
-        since = datetime.now(timezone.utc) - timedelta(hours=24)
+        since = datetime.now(timezone.utc) - timedelta(hours=hours)
         workspaces = db.query(models.Workspace).all()
 
         for workspace in workspaces:
@@ -59,21 +59,36 @@ async def run_standups(db=None):
             db.close()
 
 
-def start_scheduler():
-    cron = os.getenv("STANDUP_CRON", "0 9 * * 1-5")
+def _cron_to_trigger(cron: str) -> CronTrigger:
     minute, hour, day, month, day_of_week = cron.split()
+    return CronTrigger(
+        minute=minute, hour=hour, day=day, month=month, day_of_week=day_of_week,
+    )
+
+
+def start_scheduler():
+    # Prefer the workspace's configured cron (falls back to env, then 9am Mon-Fri)
+    cron = os.getenv("STANDUP_CRON", "0 9 * * 1-5")
+    try:
+        db = SessionLocal()
+        ws = db.query(models.Workspace).first()
+        if ws and ws.standup_cron:
+            cron = ws.standup_cron
+        db.close()
+    except Exception:
+        pass
 
     _scheduler.add_job(
         run_standups,
-        CronTrigger(
-            minute=minute,
-            hour=hour,
-            day=day,
-            month=month,
-            day_of_week=day_of_week,
-        ),
+        _cron_to_trigger(cron),
         id="daily_standup",
         replace_existing=True,
     )
     _scheduler.start()
     print(f"Scheduler started — cron: {cron}")
+
+
+def reschedule(cron: str):
+    """Live-update the cron of the daily standup job."""
+    _scheduler.reschedule_job("daily_standup", trigger=_cron_to_trigger(cron))
+    print(f"Rescheduled standup — cron: {cron}")
